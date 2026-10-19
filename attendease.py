@@ -15,22 +15,26 @@ Features
 - Target calculator showing how many future classes are needed.
 - Per-subject lecture history and CSV export.
 - Supabase email authentication and per-student cloud storage.
-- Row Level Security protects each student's records.
+- Supabase Row Level Security migration is included for per-student ownership.
 - Keep attendease_data.json as a backup of your old local data.
 """
 
 from __future__ import annotations
 
 import csv
+import copy
+import html
 import io
 import json
+import logging
+import os
+import re
 import uuid
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
-import os
 from dotenv import load_dotenv
 from supabase import create_client
 
@@ -48,16 +52,14 @@ st.set_page_config(
 APP_DIR = Path(__file__).resolve().parent
 DATA_FILE = APP_DIR / "attendease_data.json"  # Kept as a local backup; cloud data is authoritative.
 load_dotenv(APP_DIR / ".env")
+logger = logging.getLogger(__name__)
 
 try:
     SUPABASE_URL = st.secrets["SUPABASE_URL"]
-    SUPABASE_KEY = st.secrets["SUPABASE_PUBLISHABLE_KEY"]
+    SUPABASE_PUBLISHABLE_KEY = st.secrets["SUPABASE_PUBLISHABLE_KEY"]
 except (KeyError, FileNotFoundError):
     SUPABASE_URL = os.getenv("SUPABASE_URL")
-    SUPABASE_KEY = (
-        os.getenv("SUPABASE_PUBLISHABLE_KEY")
-        or os.getenv("SUPABASE_KEY")
-    )
+    SUPABASE_PUBLISHABLE_KEY = os.getenv("SUPABASE_PUBLISHABLE_KEY")
 
 PRESENT = "Present"
 ABSENT = "Absent"
@@ -219,10 +221,39 @@ def starter_data() -> dict[str, Any]:
     return {"settings": {"attendance_target": 75}, "subjects": []}
 
 
+class CloudDataLoadError(Exception):
+    """Raised when the account's cloud data could not be loaded safely."""
+
+
 def get_supabase():
-    if not SUPABASE_URL or not SUPABASE_KEY:
+    if not SUPABASE_URL or not SUPABASE_PUBLISHABLE_KEY:
         return None
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    return create_client(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY)
+
+
+def set_authenticated_user(user: Any, access_token: str, refresh_token: str, email: str) -> bool:
+    """Keep pending session data only when the same account signs back in."""
+    user_id = str(user.id)
+    previous_owner = st.session_state.get("app_data_owner_id")
+    if st.session_state.get("save_pending") and previous_owner not in (None, user_id):
+        try:
+            st.session_state["supabase"].auth.sign_out({"scope": "local"})
+        except Exception as exc:
+            logger.warning("Supabase sign-out after account mismatch failed (%s)", type(exc).__name__)
+        st.error("Unsaved changes belong to another account. Sign back into that account and retry the save first.")
+        return False
+    if st.session_state.get("app_data_owner_id") != user_id:
+        for key in ("app_data", "app_data_baseline", "save_pending"):
+            st.session_state.pop(key, None)
+    elif not st.session_state.get("save_pending"):
+        st.session_state.pop("app_data", None)
+        st.session_state.pop("app_data_baseline", None)
+    st.session_state["ae_access_token"] = access_token
+    st.session_state["ae_refresh_token"] = refresh_token
+    st.session_state["ae_user_id"] = user_id
+    st.session_state["ae_user_email"] = email
+    st.session_state["app_data_owner_id"] = user_id
+    return True
 
 
 def show_auth_screen() -> None:
@@ -242,15 +273,19 @@ def show_auth_screen() -> None:
                     {"email": email.strip(), "password": password}
                 )
                 if result.session:
-                    st.session_state["ae_access_token"] = result.session.access_token
-                    st.session_state["ae_refresh_token"] = result.session.refresh_token
-                    st.session_state["ae_user_id"] = result.user.id
-                    st.session_state["ae_user_email"] = result.user.email or email.strip()
-                    st.session_state.pop("app_data", None)
-                    st.rerun()
-                st.error("Login did not return a session. Confirm your email, then try again.")
+                    authenticated = set_authenticated_user(
+                        result.user,
+                        result.session.access_token,
+                        result.session.refresh_token,
+                        result.user.email or email.strip(),
+                    )
+                    if authenticated:
+                        st.rerun()
+                else:
+                    st.error("Login did not return a session. Confirm your email, then try again.")
             except Exception as exc:
-                st.error(f"Could not log in: {exc}")
+                logger.warning("Supabase login failed (%s)", type(exc).__name__)
+                st.error("Could not log in. Check your details and try again.")
 
     with signup_tab:
         with st.form("signup_form"):
@@ -271,15 +306,20 @@ def show_auth_screen() -> None:
                         {"email": email.strip(), "password": password}
                     )
                     if result.session and result.user:
-                        st.session_state["ae_access_token"] = result.session.access_token
-                        st.session_state["ae_refresh_token"] = result.session.refresh_token
-                        st.session_state["ae_user_id"] = result.user.id
-                        st.session_state["ae_user_email"] = result.user.email or email.strip()
-                        st.success("Account created.")
-                        st.rerun()
-                    st.success("Account request submitted. Check your email to confirm the account, then log in.")
+                        authenticated = set_authenticated_user(
+                            result.user,
+                            result.session.access_token,
+                            result.session.refresh_token,
+                            result.user.email or email.strip(),
+                        )
+                        if authenticated:
+                            st.success("Account created.")
+                            st.rerun()
+                    else:
+                        st.success("Account request submitted. Check your email to confirm the account, then log in.")
                 except Exception as exc:
-                    st.error(f"Could not create account: {exc}")
+                    logger.warning("Supabase sign-up failed (%s)", type(exc).__name__)
+                    st.error("Could not create the account. Check the details and try again.")
 
     with reset_tab:
         with st.form("reset_password_form"):
@@ -293,7 +333,8 @@ def show_auth_screen() -> None:
                     st.session_state["supabase"].auth.reset_password_email(email.strip())
                     st.success("If the address is registered, a password-reset email will be sent.")
                 except Exception as exc:
-                    st.error(f"Could not request password reset: {exc}")
+                    logger.warning("Supabase password reset request failed (%s)", type(exc).__name__)
+                    st.error("Could not request a password reset. Try again later.")
 
 
 def current_supabase():
@@ -302,24 +343,42 @@ def current_supabase():
         return None
     access = st.session_state.get("ae_access_token")
     refresh = st.session_state.get("ae_refresh_token")
-    if access and refresh:
-        try:
-            client.auth.set_session(access, refresh)
-        except Exception:
-            st.session_state.pop("ae_access_token", None)
-            st.session_state.pop("ae_refresh_token", None)
-            st.session_state.pop("ae_user_id", None)
-            return None
+    if not access or not refresh or not st.session_state.get("ae_user_id"):
+        for key in ("ae_access_token", "ae_refresh_token", "ae_user_id", "ae_user_email"):
+            st.session_state.pop(key, None)
+        return None
+    try:
+        # get_session refreshes expired tokens and keeps the rotated refresh token.
+        # Restore from Streamlit state only when this client has no live session.
+        session = client.auth.get_session()
+        if session is None:
+            auth_response = client.auth.set_session(access, refresh)
+            session = getattr(auth_response, "session", None)
+        session_user_id = getattr(getattr(session, "user", None), "id", None)
+        if (
+            session is None
+            or not getattr(session, "access_token", None)
+            or not getattr(session, "refresh_token", None)
+            or str(session_user_id) != str(st.session_state["ae_user_id"])
+        ):
+            raise RuntimeError("Supabase session is missing or belongs to another account")
+        st.session_state["ae_access_token"] = session.access_token
+        st.session_state["ae_refresh_token"] = session.refresh_token
+    except Exception as exc:
+        logger.warning("Supabase session restoration failed (%s)", type(exc).__name__)
+        for key in ("ae_access_token", "ae_refresh_token", "ae_user_id", "ae_user_email"):
+            st.session_state.pop(key, None)
+        return None
     return client
 
 
 def load_data() -> dict[str, Any]:
     """Load only the signed-in user's rows. RLS remains the security boundary."""
     client = current_supabase()
-    if client is None or not st.session_state.get("ae_user_id"):
-        return starter_data()
+    user_id = st.session_state.get("ae_user_id")
+    if client is None or not user_id:
+        raise CloudDataLoadError("A valid authenticated session is required.")
     try:
-        user_id = st.session_state["ae_user_id"]
         subject_rows = client.table("subjects").select("*").eq("user_id", user_id).execute().data or []
         lecture_rows = client.table("lectures").select("*").eq("user_id", user_id).execute().data or []
         lectures_by_subject: dict[str, list[dict[str, Any]]] = {}
@@ -348,54 +407,104 @@ def load_data() -> dict[str, Any]:
             target = 75
         return {"settings": {"attendance_target": min(100, max(1, target))}, "subjects": subjects}
     except Exception as exc:
-        st.error(f"Could not load your cloud data: {exc}")
-        return starter_data()
+        logger.warning("Supabase data load failed (%s)", type(exc).__name__)
+        raise CloudDataLoadError("Cloud data could not be loaded.") from None
 
 
-def save_data() -> None:
-    """Reconcile this user's in-memory data with Supabase. RLS enforces ownership."""
+def _subject_values(subject: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": subject["id"],
+        "name": subject["name"],
+        "teacher": subject.get("teacher", ""),
+        "color": subject.get("color", "#6D5CE8"),
+    }
+
+
+def _lecture_values(subject_id: str, lecture: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": lecture["id"],
+        "subject_id": subject_id,
+        "lecture_date": lecture.get("date") or date.today().isoformat(),
+        "status": lecture.get("status") if lecture.get("status") in STATUSES else BLANK,
+        "topic": lecture.get("topic", ""),
+        "notes": lecture.get("notes", ""),
+    }
+
+
+def _index_subjects(data: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {str(subject["id"]): subject for subject in data.get("subjects", [])}
+
+
+def _index_lectures(data: dict[str, Any]) -> dict[str, tuple[str, dict[str, Any]]]:
+    return {
+        str(lecture["id"]): (str(subject["id"]), lecture)
+        for subject in data.get("subjects", [])
+        for lecture in subject.get("lectures", [])
+    }
+
+
+def save_data() -> bool:
+    """Persist only edits made since this session's last successful cloud load/save."""
     client = current_supabase()
     user_id = st.session_state.get("ae_user_id")
     if client is None or not user_id:
-        st.error("You are not signed in. Your changes were not saved.")
-        return
+        st.session_state["save_pending"] = True
+        st.error("Your session expired. Sign in again before saving these changes.")
+        return False
+    baseline = st.session_state.get("app_data_baseline")
+    if baseline is None:
+        st.session_state["save_pending"] = True
+        st.error("Your cloud data was not loaded safely. Reload the page before making changes.")
+        return False
+
     data = st.session_state["app_data"]
-    subjects = data.get("subjects", [])
     try:
-        existing_subject_rows = client.table("subjects").select("id").eq("user_id", user_id).execute().data or []
-        existing_lecture_rows = client.table("lectures").select("id").eq("user_id", user_id).execute().data or []
-        subject_ids = {str(s["id"]) for s in subjects}
-        lecture_ids = {str(l["id"]) for s in subjects for l in s.get("lectures", [])}
+        old_subjects = _index_subjects(baseline)
+        new_subjects = _index_subjects(data)
+        old_lectures = _index_lectures(baseline)
+        new_lectures = _index_lectures(data)
 
-        # Delete removed lectures first, then removed subjects.
-        for row in existing_lecture_rows:
-            if str(row["id"]) not in lecture_ids:
-                client.table("lectures").delete().eq("id", row["id"]).eq("user_id", user_id).execute()
-        for row in existing_subject_rows:
-            if str(row["id"]) not in subject_ids:
-                client.table("subjects").delete().eq("id", row["id"]).eq("user_id", user_id).execute()
+        # Delete only rows this session previously loaded and the user explicitly removed.
+        removed_subject_ids = old_subjects.keys() - new_subjects.keys()
+        removed_lecture_ids = old_lectures.keys() - new_lectures.keys()
+        for lecture_id in removed_lecture_ids:
+            client.table("lectures").delete().eq("id", lecture_id).eq("user_id", user_id).execute()
+        for subject_id in removed_subject_ids:
+            # Include any lectures added in another tab since this session loaded the subject.
+            client.table("lectures").delete().eq("subject_id", subject_id).eq("user_id", user_id).execute()
+            client.table("subjects").delete().eq("id", subject_id).eq("user_id", user_id).execute()
 
-        for subject in subjects:
-            client.table("subjects").upsert({
-                "id": subject["id"], "user_id": user_id,
-                "name": subject["name"], "teacher": subject.get("teacher", ""),
-                "color": subject.get("color", "#6D5CE8"),
+        for subject_id, subject in new_subjects.items():
+            values = _subject_values(subject)
+            old_subject = old_subjects.get(subject_id)
+            if old_subject is None or _subject_values(old_subject) != values:
+                client.table("subjects").upsert({**values, "user_id": user_id}).execute()
+
+        for lecture_id, (subject_id, lecture) in new_lectures.items():
+            values = _lecture_values(subject_id, lecture)
+            old_lecture = old_lectures.get(lecture_id)
+            if old_lecture is None or (
+                old_lecture[0] != subject_id
+                or _lecture_values(old_lecture[0], old_lecture[1]) != values
+            ):
+                client.table("lectures").upsert({**values, "user_id": user_id}).execute()
+
+        old_target = int(baseline.get("settings", {}).get("attendance_target", 75))
+        new_target = int(data.get("settings", {}).get("attendance_target", 75))
+        if old_target != new_target:
+            client.table("user_preferences").upsert({
+                "user_id": user_id,
+                "attendance_target": new_target,
             }).execute()
-            for lecture in subject.get("lectures", []):
-                client.table("lectures").upsert({
-                    "id": lecture["id"], "user_id": user_id,
-                    "subject_id": subject["id"],
-                    "lecture_date": lecture.get("date") or date.today().isoformat(),
-                    "status": lecture.get("status") if lecture.get("status") in STATUSES else BLANK,
-                    "topic": lecture.get("topic", ""),
-                    "notes": lecture.get("notes", ""),
-                }).execute()
-        client.table("user_preferences").upsert({
-            "user_id": user_id,
-            "attendance_target": int(data.get("settings", {}).get("attendance_target", 75)),
-        }).execute()
+
+        st.session_state["app_data_baseline"] = copy.deepcopy(data)
+        st.session_state.pop("save_pending", None)
+        return True
     except Exception as exc:
-        st.error(f"Cloud save failed. Your changes may not have been saved: {exc}")
+        logger.warning("Supabase data save failed (%s)", type(exc).__name__)
+        st.session_state["save_pending"] = True
+        st.error("Cloud save failed. Your changes are still in this session; retry the save before leaving.")
+        return False
 
 
 def new_id() -> str:
@@ -493,21 +602,47 @@ def can_miss_more(present: int, held: int, target: int) -> int:
 def page_heading(title: str, subtitle: str) -> None:
     """Render a consistent page title and supporting description."""
     st.title(title)
-    st.markdown(f'<p class="ae-section-note">{subtitle}</p>', unsafe_allow_html=True)
+    st.markdown(
+        f'<p class="ae-section-note">{html.escape(str(subtitle), quote=True)}</p>',
+        unsafe_allow_html=True,
+    )
 
 
 def metric_card(label: str, value: str, note: str = "") -> None:
     """Render a small dashboard KPI card."""
+    safe_label = html.escape(str(label), quote=True)
+    safe_value = html.escape(str(value), quote=True)
+    safe_note = html.escape(str(note), quote=True)
     st.markdown(
         f"""
         <div class="ae-card">
-            <div class="ae-card-label">{label}</div>
-            <div class="ae-card-value">{value}</div>
-            <div class="ae-card-note">{note}</div>
+            <div class="ae-card-label">{safe_label}</div>
+            <div class="ae-card-value">{safe_value}</div>
+            <div class="ae-card-note">{safe_note}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def escape_markdown_text(value: Any) -> str:
+    """Render user-provided labels as text instead of Markdown syntax."""
+    escaped = html.escape(str(value), quote=False)
+    return re.sub(r"([\\`*_{}\[\]()#+\-.!|<>])", r"\\\1", escaped)
+
+
+def safe_filename_component(value: Any) -> str:
+    """Remove path and control characters from user-derived download names."""
+    cleaned = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", str(value)).strip(" .")
+    return (cleaned[:80] or "subject")
+
+
+def safe_csv_cell(value: Any) -> str:
+    """Keep exported text from being interpreted as a spreadsheet formula."""
+    text_value = "" if value is None else str(value)
+    if text_value.lstrip().startswith(("=", "+", "-", "@")):
+        return "'" + text_value
+    return text_value
 
 
 def make_csv(subject: dict[str, Any] | None = None) -> str:
@@ -529,7 +664,7 @@ def make_csv(subject: dict[str, Any] | None = None) -> str:
                 )
             )
     for row in sorted(rows):
-        writer.writerow([row[1], row[0], row[2], row[3], row[4]])
+        writer.writerow([safe_csv_cell(value) for value in (row[1], row[0], row[2], row[3], row[4])])
     return output.getvalue()
 
 
@@ -546,15 +681,39 @@ if "supabase" not in st.session_state:
     st.session_state["supabase"] = get_supabase()
 
 if st.session_state["supabase"] is None:
-    st.error("Supabase is not configured. Check SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in your .env file.")
+    st.error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in Streamlit secrets or .env.")
     st.stop()
 
 if not st.session_state.get("ae_user_id"):
+    if st.session_state.get("save_pending"):
+        st.warning("Unsaved changes are held for the account that created them. Sign back into that account to retry.")
     show_auth_screen()
     st.stop()
 
+if st.session_state.get("app_data_owner_id") not in (None, st.session_state["ae_user_id"]):
+    for key in ("app_data", "app_data_baseline", "save_pending"):
+        st.session_state.pop(key, None)
+
 if "app_data" not in st.session_state:
-    st.session_state["app_data"] = load_data()
+    try:
+        loaded_data = load_data()
+    except CloudDataLoadError:
+        st.error("Your cloud data could not be loaded. No changes are enabled until you reconnect and reload.")
+        if st.button("Retry loading cloud data", key="retry_cloud_load"):
+            st.rerun()
+        st.stop()
+    st.session_state["app_data"] = loaded_data
+    st.session_state["app_data_baseline"] = copy.deepcopy(loaded_data)
+    st.session_state["app_data_owner_id"] = st.session_state["ae_user_id"]
+elif "app_data_baseline" not in st.session_state:
+    st.session_state["app_data_baseline"] = copy.deepcopy(st.session_state["app_data"])
+    st.session_state["app_data_owner_id"] = st.session_state["ae_user_id"]
+
+if st.session_state.get("save_pending"):
+    st.warning("Some changes have not been confirmed in Supabase. Retry the save before leaving this session.")
+    if st.button("Retry saving pending changes", key="retry_pending_save"):
+        if save_data():
+            st.rerun()
 
 app_data = st.session_state["app_data"]
 subjects = app_data["subjects"]
@@ -588,14 +747,22 @@ with st.sidebar:
     st.caption(f'{len(subjects)} subject(s) · {all_stats["held"]} counted lecture(s)')
     st.caption(f'Signed in: {st.session_state.get("ae_user_email", "student")}')
     if st.button("Log out", use_container_width=True):
-        try:
-            current_supabase().auth.sign_out()
-        except Exception:
-            pass
-        for key in ("ae_access_token", "ae_refresh_token", "ae_user_id", "ae_user_email", "app_data"):
-            st.session_state.pop(key, None)
-        st.rerun()
-    st.caption("Cloud-saved to your private student account.")
+        if st.session_state.get("save_pending"):
+            st.error("Retry the pending save before logging out so you do not lose this session's changes.")
+        else:
+            try:
+                client = current_supabase()
+                if client is not None:
+                    client.auth.sign_out({"scope": "local"})
+            except Exception as exc:
+                logger.warning("Supabase sign-out failed (%s)", type(exc).__name__)
+            for key in (
+                "ae_access_token", "ae_refresh_token", "ae_user_id", "ae_user_email",
+                "app_data", "app_data_baseline", "app_data_owner_id", "save_pending",
+            ):
+                st.session_state.pop(key, None)
+            st.rerun()
+    st.caption("Saved to Supabase for this signed-in account.")
 
 
 # ---------------------------------------------------------------------------
@@ -641,9 +808,9 @@ if page == "Dashboard":
                 with st.container(border=True):
                     top1, top2 = st.columns([3, 1])
                     with top1:
-                        st.markdown(f"**{subject['name']}**")
+                        st.markdown(f"**{escape_markdown_text(subject['name'])}**")
                         teacher = subject.get("teacher", "").strip()
-                        st.caption(teacher if teacher else "No teacher added")
+                        st.caption(escape_markdown_text(teacher) if teacher else "No teacher added")
                     with top2:
                         st.markdown(
                             f'<div style="text-align:right;font-weight:800;font-size:1.15rem;color:#5141C9">{stats["percentage"]:.1f}%</div>',
@@ -750,9 +917,9 @@ elif page == "My Subjects":
                             "lectures": [],
                         }
                     )
-                    save_data()
-                    st.success(f"Added {cleaned_name}.")
-                    st.rerun()
+                    if save_data():
+                        st.success("Subject added.")
+                        st.rerun()
 
     with manage_tab:
         if not subjects:
@@ -760,7 +927,7 @@ elif page == "My Subjects":
         else:
             for subject in list(subjects):
                 with st.expander(
-                    f'{subject["name"]}  ·  {len(subject.get("lectures", []))} record(s)',
+                    f'{escape_markdown_text(subject["name"])}  ·  {len(subject.get("lectures", []))} record(s)',
                     expanded=False,
                 ):
                     with st.form(f'edit_subject_{subject["id"]}'):
@@ -781,9 +948,9 @@ elif page == "My Subjects":
                             else:
                                 subject["name"] = cleaned_name
                                 subject["teacher"] = edited_teacher.strip()
-                                save_data()
-                                st.success("Subject updated.")
-                                st.rerun()
+                                if save_data():
+                                    st.success("Subject updated.")
+                                    st.rerun()
 
                     st.caption("Deleting a subject also deletes its lecture history.")
                     confirm_key = f'confirm_delete_{subject["id"]}'
@@ -792,9 +959,9 @@ elif page == "My Subjects":
                         st.session_state["app_data"]["subjects"] = [
                             s for s in subjects if s["id"] != subject["id"]
                         ]
-                        save_data()
-                        st.success("Subject and its records deleted.")
-                        st.rerun()
+                        if save_data():
+                            st.success("Subject and its records deleted.")
+                            st.rerun()
 
 
 # ---------------------------------------------------------------------------
@@ -841,16 +1008,19 @@ elif page == "Mark Attendance":
         with identity_col:
             initials = "".join(part[0] for part in subject["name"].split()[:2]).upper()
             teacher = subject.get("teacher", "").strip()
+            safe_initials = html.escape(initials or "S", quote=True)
+            safe_subject_name = html.escape(str(subject["name"]), quote=True)
+            safe_teacher = html.escape(teacher or "Attendance record", quote=True)
             st.markdown(
                 f"""
                 <div style="background:#FFFFFF;border:1px solid #ECEAF4;border-radius:14px;
                             padding:.8rem 1rem;display:flex;align-items:center;gap:.8rem">
                     <div style="width:42px;height:42px;border-radius:50%;background:#F0EDFF;
                                 color:#5947D2;display:flex;align-items:center;justify-content:center;
-                                font-weight:800">{initials or "S"}</div>
+                                font-weight:800">{safe_initials}</div>
                     <div>
-                        <div style="font-size:1rem;font-weight:700;color:#24223A">{subject["name"]}</div>
-                        <div style="font-size:.76rem;color:#77758D">{teacher or "Attendance record"}</div>
+                        <div style="font-size:1rem;font-weight:700;color:#24223A">{safe_subject_name}</div>
+                        <div style="font-size:.76rem;color:#77758D">{safe_teacher}</div>
                     </div>
                 </div>
                 """,
@@ -916,8 +1086,8 @@ elif page == "Mark Attendance":
                             "created_at": datetime.now().isoformat(timespec="seconds"),
                         }
                     )
-                    save_data()
-                    st.rerun()
+                    if save_data():
+                        st.rerun()
 
         lectures = sorted(
             subject.get("lectures", []),
@@ -936,6 +1106,9 @@ elif page == "Mark Attendance":
                 row_bg, status_color, dot = status_style.get(lecture.get("status", BLANK), status_style[BLANK])
                 topic_text = lecture.get("topic", "").strip() or f"Lecture {index:02d}"
                 lecture_date_text = lecture.get("date", "")
+                safe_topic_text = html.escape(str(topic_text), quote=True)
+                safe_lecture_date_text = html.escape(str(lecture_date_text), quote=True)
+                safe_status_text = html.escape(str(lecture.get("status", BLANK)), quote=True)
                 row_col, edit_col = st.columns([5.2, 1.2], vertical_alignment="center")
                 with row_col:
                     st.markdown(
@@ -947,11 +1120,11 @@ elif page == "Mark Attendance":
                                 {index:02d}
                             </div>
                             <div style="flex:1">
-                                <div style="font-size:.83rem;font-weight:500;color:#24223A">{topic_text}</div>
-                                <div style="font-size:.67rem;color:#77758D">{lecture_date_text}</div>
+                                <div style="font-size:.83rem;font-weight:500;color:#24223A">{safe_topic_text}</div>
+                                <div style="font-size:.67rem;color:#77758D">{safe_lecture_date_text}</div>
                             </div>
                             <div style="font-size:.78rem;font-weight:700;color:{status_color};white-space:nowrap">
-                                {dot} &nbsp; {lecture.get("status", BLANK)}
+                                {dot} &nbsp; {safe_status_text}
                             </div>
                         </div>
                         """,
@@ -990,15 +1163,15 @@ elif page == "Mark Attendance":
                                     "notes": updated_notes.strip(),
                                 }
                             )
-                            save_data()
-                            st.rerun()
+                            if save_data():
+                                st.rerun()
                         if st.button("Delete lecture", key=f"inline_delete_{lecture['id']}", use_container_width=True):
                             subject["lectures"] = [
                                 item for item in subject["lectures"]
                                 if item["id"] != lecture["id"]
                             ]
-                            save_data()
-                            st.rerun()
+                            if save_data():
+                                st.rerun()
 
         st.markdown(
             """
@@ -1056,7 +1229,7 @@ elif page == "Reports":
             stats = attendance_stats(selected_subject)
             left, right = st.columns(2, gap="large")
             with left:
-                st.markdown(f'### {selected_subject["name"]}')
+                st.markdown(f'### {escape_markdown_text(selected_subject["name"])}')
                 st.metric("Attendance percentage", f'{stats["percentage"]:.1f}%')
                 st.progress(min(1.0, float(stats["percentage"]) / 100))
                 st.caption(f'{stats["present"]} present out of {stats["held"]} counted lectures.')
@@ -1084,7 +1257,7 @@ elif page == "Reports":
             st.download_button(
                 "Download this subject's CSV",
                 data=make_csv(selected_subject),
-                file_name=f'attendease_{selected_subject["name"].strip().replace(" ", "_")}.csv',
+                file_name=f'attendease_{safe_filename_component(selected_subject["name"])}.csv',
                 mime="text/csv",
                 use_container_width=True,
             )
@@ -1123,13 +1296,13 @@ elif page == "Settings":
         save_target = st.form_submit_button("Save target", type="primary", use_container_width=True)
         if save_target:
             app_data["settings"]["attendance_target"] = int(new_target)
-            save_data()
-            st.success(f"Attendance target set to {new_target}%.")
-            st.rerun()
+            if save_data():
+                st.success(f"Attendance target set to {new_target}%.")
+                st.rerun()
 
     st.divider()
     st.subheader("Your cloud data")
-    st.write("Your subjects and lecture records are stored in Supabase and scoped to your signed-in student account.")
+    st.write("Your subjects and lecture records are stored in Supabase. Database row policies must be applied to enforce account isolation.")
     st.caption("The old attendease_data.json file is not used as the live database. Keep it as a backup until you have verified your cloud records.")
 
     all_stats = overall_stats(subjects)
@@ -1155,4 +1328,5 @@ elif page == "Settings":
 # 12. FOOTER
 # ---------------------------------------------------------------------------
 st.divider()
-st.caption("AttendEase · Built for clarity, not confusion. Your records are stored in your private Supabase account.")
+st.caption("AttendEase · Built for clarity, not confusion. Your records are stored in Supabase.")
+
