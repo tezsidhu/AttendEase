@@ -1,0 +1,7 @@
+
+.env
+.streamlit/secrets.toml
+__pycache__/
+*.pyc
+attendease_data.json
+test_supabase_attendease.py
