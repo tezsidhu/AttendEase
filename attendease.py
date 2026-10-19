@@ -745,7 +745,7 @@ def weekly_attendance_trend(
     percentages = []
     for bucket in totals:
         held = bucket["present"] + bucket["absent"]
-        percentages.append((bucket["present"] / held * 100) if held else 0.0)
+        percentages.append((bucket["present"] / held * 100) if held else None)
     labels = [f"Week {index + 1}" for index in range(week_count)]
     return pd.DataFrame({"Attendance": percentages}, index=labels)
 
@@ -1025,10 +1025,11 @@ if page == "Dashboard":
         with st.container(border=True):
             st.markdown('<div class="ae-panel-title">Attendance trend</div>', unsafe_allow_html=True)
             st.caption("Weekly attendance over the last five weeks")
-            if all_stats["held"]:
-                st.line_chart(weekly_attendance_trend(subjects), color="#6D5CE8", height=225)
+            trend_data = weekly_attendance_trend(subjects)
+            if all_stats["held"] and trend_data["Attendance"].notna().any():
+                st.line_chart(trend_data, color="#6D5CE8", height=225)
             else:
-                st.info("Your trend will appear after you mark a lecture as present or absent.")
+                st.info("Your recent trend will appear after you record attendance in the last five weeks.")
     with subjects_col:
         with st.container(border=True):
             title_col, view_col = st.columns([2.5, 1], vertical_alignment="center")
@@ -1664,7 +1665,7 @@ elif page == "Settings":
 
 
 # ---------------------------------------------------------------------------
-# 12. FOOTER
+# 13. FOOTER
 # ---------------------------------------------------------------------------
 st.divider()
 st.caption("AttendEase · Built for clarity, not confusion. Your records are stored in Supabase.")
