@@ -5,7 +5,7 @@ Run:
     py -m pip install --upgrade streamlit
     py -m streamlit run attendease.py
 
-A polished local-first attendance tracker for students.
+A cloud-backed attendance tracker with individual student accounts.
 
 Features
 - Dashboard with attendance KPIs and subject overview.
@@ -14,12 +14,9 @@ Features
 - Attendance calculations exclude cancelled and blank lectures.
 - Target calculator showing how many future classes are needed.
 - Per-subject lecture history and CSV export.
-- Local JSON persistence in attendease_data.json.
-
-Limitations
-- This is a personal prototype, not an official university record.
-- Data is stored locally beside this Python file; it is not cloud-synced.
-- Keep a backup of attendease_data.json if the records matter to you.
+- Supabase email authentication and per-student cloud storage.
+- Row Level Security protects each student's records.
+- Keep attendease_data.json as a backup of your old local data.
 """
 
 from __future__ import annotations
@@ -33,6 +30,9 @@ from pathlib import Path
 from typing import Any
 
 import streamlit as st
+import os
+from dotenv import load_dotenv
+from supabase import create_client
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +46,18 @@ st.set_page_config(
 )
 
 APP_DIR = Path(__file__).resolve().parent
-DATA_FILE = APP_DIR / "attendease_data.json"
+DATA_FILE = APP_DIR / "attendease_data.json"  # Kept as a local backup; cloud data is authoritative.
+load_dotenv(APP_DIR / ".env")
+
+try:
+    SUPABASE_URL = st.secrets["SUPABASE_URL"]
+    SUPABASE_KEY = st.secrets["SUPABASE_PUBLISHABLE_KEY"]
+except (KeyError, FileNotFoundError):
+    SUPABASE_URL = os.getenv("SUPABASE_URL")
+    SUPABASE_KEY = (
+        os.getenv("SUPABASE_PUBLISHABLE_KEY")
+        or os.getenv("SUPABASE_KEY")
+    )
 
 PRESENT = "Present"
 ABSENT = "Absent"
@@ -202,87 +213,189 @@ st.markdown(
 
 
 # ---------------------------------------------------------------------------
-# 2. DATA STORAGE AND VALIDATION
+# 2. AUTHENTICATION AND CLOUD DATA STORAGE
 # ---------------------------------------------------------------------------
 def starter_data() -> dict[str, Any]:
-    """Create a fresh, valid data structure for a new installation."""
-    return {
-        "settings": {"attendance_target": 75},
-        "subjects": [],
-    }
+    return {"settings": {"attendance_target": 75}, "subjects": []}
+
+
+def get_supabase():
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return None
+    return create_client(SUPABASE_URL, SUPABASE_KEY)
+
+
+def show_auth_screen() -> None:
+    st.markdown('<div class="ae-brand">Attend<span>Ease</span></div>', unsafe_allow_html=True)
+    st.title("Your attendance. Your account.")
+    st.write("Sign in to access your personal attendance records from your own account.")
+    login_tab, signup_tab, reset_tab = st.tabs(["Log in", "Create account", "Reset password"])
+
+    with login_tab:
+        with st.form("login_form"):
+            email = st.text_input("Email address", key="login_email")
+            password = st.text_input("Password", type="password", key="login_password")
+            submit = st.form_submit_button("Log in", type="primary", use_container_width=True)
+        if submit:
+            try:
+                result = st.session_state["supabase"].auth.sign_in_with_password(
+                    {"email": email.strip(), "password": password}
+                )
+                if result.session:
+                    st.session_state["ae_access_token"] = result.session.access_token
+                    st.session_state["ae_refresh_token"] = result.session.refresh_token
+                    st.session_state["ae_user_id"] = result.user.id
+                    st.session_state["ae_user_email"] = result.user.email or email.strip()
+                    st.session_state.pop("app_data", None)
+                    st.rerun()
+                st.error("Login did not return a session. Confirm your email, then try again.")
+            except Exception as exc:
+                st.error(f"Could not log in: {exc}")
+
+    with signup_tab:
+        with st.form("signup_form"):
+            email = st.text_input("Email address", key="signup_email")
+            password = st.text_input("Password (at least 8 characters)", type="password", key="signup_password")
+            confirm = st.text_input("Confirm password", type="password", key="signup_confirm")
+            submit = st.form_submit_button("Create account", type="primary", use_container_width=True)
+        if submit:
+            if not email.strip() or "@" not in email:
+                st.error("Enter a valid email address.")
+            elif len(password) < 8:
+                st.error("Use a password with at least 8 characters.")
+            elif password != confirm:
+                st.error("The passwords do not match.")
+            else:
+                try:
+                    result = st.session_state["supabase"].auth.sign_up(
+                        {"email": email.strip(), "password": password}
+                    )
+                    if result.session and result.user:
+                        st.session_state["ae_access_token"] = result.session.access_token
+                        st.session_state["ae_refresh_token"] = result.session.refresh_token
+                        st.session_state["ae_user_id"] = result.user.id
+                        st.session_state["ae_user_email"] = result.user.email or email.strip()
+                        st.success("Account created.")
+                        st.rerun()
+                    st.success("Account request submitted. Check your email to confirm the account, then log in.")
+                except Exception as exc:
+                    st.error(f"Could not create account: {exc}")
+
+    with reset_tab:
+        with st.form("reset_password_form"):
+            email = st.text_input("Account email", key="reset_email")
+            submit = st.form_submit_button("Send reset link", use_container_width=True)
+        if submit:
+            if not email.strip():
+                st.error("Enter your account email.")
+            else:
+                try:
+                    st.session_state["supabase"].auth.reset_password_email(email.strip())
+                    st.success("If the address is registered, a password-reset email will be sent.")
+                except Exception as exc:
+                    st.error(f"Could not request password reset: {exc}")
+
+
+def current_supabase():
+    client = st.session_state.get("supabase")
+    if client is None:
+        return None
+    access = st.session_state.get("ae_access_token")
+    refresh = st.session_state.get("ae_refresh_token")
+    if access and refresh:
+        try:
+            client.auth.set_session(access, refresh)
+        except Exception:
+            st.session_state.pop("ae_access_token", None)
+            st.session_state.pop("ae_refresh_token", None)
+            st.session_state.pop("ae_user_id", None)
+            return None
+    return client
 
 
 def load_data() -> dict[str, Any]:
-    """Load data from JSON and recover safely if the file is missing or invalid."""
-    if not DATA_FILE.exists():
+    """Load only the signed-in user's rows. RLS remains the security boundary."""
+    client = current_supabase()
+    if client is None or not st.session_state.get("ae_user_id"):
         return starter_data()
-
     try:
-        with DATA_FILE.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-
-        if not isinstance(data, dict):
-            raise ValueError("The root of the data file must be an object.")
-
-        settings = data.get("settings")
-        if not isinstance(settings, dict):
-            settings = {}
+        user_id = st.session_state["ae_user_id"]
+        subject_rows = client.table("subjects").select("*").eq("user_id", user_id).execute().data or []
+        lecture_rows = client.table("lectures").select("*").eq("user_id", user_id).execute().data or []
+        lectures_by_subject: dict[str, list[dict[str, Any]]] = {}
+        for row in lecture_rows:
+            lectures_by_subject.setdefault(str(row["subject_id"]), []).append({
+                "id": str(row["id"]),
+                "date": str(row.get("lecture_date") or date.today().isoformat()),
+                "status": row.get("status") if row.get("status") in STATUSES else BLANK,
+                "topic": row.get("topic") or "",
+                "notes": row.get("notes") or "",
+            })
+        subjects = []
+        for row in subject_rows:
+            sid = str(row["id"])
+            subjects.append({
+                "id": sid,
+                "name": row.get("name") or "Untitled subject",
+                "teacher": row.get("teacher") or "",
+                "color": row.get("color") or "#6D5CE8",
+                "lectures": lectures_by_subject.get(sid, []),
+            })
+        prefs = client.table("user_preferences").select("attendance_target").eq("user_id", user_id).maybe_single().execute().data
         try:
-            target = int(settings.get("attendance_target", 75))
+            target = int((prefs or {}).get("attendance_target", 75))
         except (TypeError, ValueError):
             target = 75
-        data["settings"] = {"attendance_target": min(100, max(1, target))}
-
-        subjects = data.get("subjects")
-        if not isinstance(subjects, list):
-            subjects = []
-
-        # Repair malformed entries instead of letting one record break the app.
-        cleaned_subjects = []
-        for subject in subjects:
-            if not isinstance(subject, dict):
-                continue
-            subject.setdefault("id", str(uuid.uuid4()))
-            subject.setdefault("name", "Untitled subject")
-            subject.setdefault("teacher", "")
-            subject.setdefault("color", "#6D5CE8")
-            subject.setdefault("lectures", [])
-            if not isinstance(subject["lectures"], list):
-                subject["lectures"] = []
-            cleaned_lectures = []
-            for lecture in subject["lectures"]:
-                if not isinstance(lecture, dict):
-                    continue
-                if lecture.get("status") not in STATUSES:
-                    lecture["status"] = BLANK
-                lecture.setdefault("id", str(uuid.uuid4()))
-                lecture.setdefault("date", date.today().isoformat())
-                lecture.setdefault("topic", "")
-                lecture.setdefault("notes", "")
-                cleaned_lectures.append(lecture)
-            subject["lectures"] = cleaned_lectures
-            cleaned_subjects.append(subject)
-        data["subjects"] = cleaned_subjects
-        return data
-
-    except (OSError, json.JSONDecodeError, ValueError):
-        st.error(
-            "AttendEase could not read **attendease_data.json**. "
-            "Your existing file has not been overwritten. Rename or back it up, "
-            "then refresh to start with an empty dataset."
-        )
+        return {"settings": {"attendance_target": min(100, max(1, target))}, "subjects": subjects}
+    except Exception as exc:
+        st.error(f"Could not load your cloud data: {exc}")
         return starter_data()
 
 
 def save_data() -> None:
-    """Save the current data safely by writing a temporary file before replacing."""
-    temporary_file = DATA_FILE.with_suffix(".tmp")
+    """Reconcile this user's in-memory data with Supabase. RLS enforces ownership."""
+    client = current_supabase()
+    user_id = st.session_state.get("ae_user_id")
+    if client is None or not user_id:
+        st.error("You are not signed in. Your changes were not saved.")
+        return
+    data = st.session_state["app_data"]
+    subjects = data.get("subjects", [])
     try:
-        with temporary_file.open("w", encoding="utf-8") as file:
-            json.dump(st.session_state["app_data"], file, indent=2, ensure_ascii=False)
-        temporary_file.replace(DATA_FILE)
-    except OSError as exc:
-        st.error(f"Could not save your data: {exc}")
+        existing_subject_rows = client.table("subjects").select("id").eq("user_id", user_id).execute().data or []
+        existing_lecture_rows = client.table("lectures").select("id").eq("user_id", user_id).execute().data or []
+        subject_ids = {str(s["id"]) for s in subjects}
+        lecture_ids = {str(l["id"]) for s in subjects for l in s.get("lectures", [])}
+
+        # Delete removed lectures first, then removed subjects.
+        for row in existing_lecture_rows:
+            if str(row["id"]) not in lecture_ids:
+                client.table("lectures").delete().eq("id", row["id"]).eq("user_id", user_id).execute()
+        for row in existing_subject_rows:
+            if str(row["id"]) not in subject_ids:
+                client.table("subjects").delete().eq("id", row["id"]).eq("user_id", user_id).execute()
+
+        for subject in subjects:
+            client.table("subjects").upsert({
+                "id": subject["id"], "user_id": user_id,
+                "name": subject["name"], "teacher": subject.get("teacher", ""),
+                "color": subject.get("color", "#6D5CE8"),
+            }).execute()
+            for lecture in subject.get("lectures", []):
+                client.table("lectures").upsert({
+                    "id": lecture["id"], "user_id": user_id,
+                    "subject_id": subject["id"],
+                    "lecture_date": lecture.get("date") or date.today().isoformat(),
+                    "status": lecture.get("status") if lecture.get("status") in STATUSES else BLANK,
+                    "topic": lecture.get("topic", ""),
+                    "notes": lecture.get("notes", ""),
+                }).execute()
+        client.table("user_preferences").upsert({
+            "user_id": user_id,
+            "attendance_target": int(data.get("settings", {}).get("attendance_target", 75)),
+        }).execute()
+    except Exception as exc:
+        st.error(f"Cloud save failed. Your changes may not have been saved: {exc}")
 
 
 def new_id() -> str:
@@ -291,7 +404,6 @@ def new_id() -> str:
 
 
 def get_subject(subject_id: str) -> dict[str, Any] | None:
-    """Find a subject by ID, returning None if it no longer exists."""
     return next(
         (s for s in st.session_state["app_data"]["subjects"] if s["id"] == subject_id),
         None,
@@ -428,8 +540,19 @@ def subject_label(subject: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------------
-# 5. INITIALIZE APP STATE
+# 5. INITIALIZE APP STATE AND AUTHENTICATION
 # ---------------------------------------------------------------------------
+if "supabase" not in st.session_state:
+    st.session_state["supabase"] = get_supabase()
+
+if st.session_state["supabase"] is None:
+    st.error("Supabase is not configured. Check SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY in your .env file.")
+    st.stop()
+
+if not st.session_state.get("ae_user_id"):
+    show_auth_screen()
+    st.stop()
+
 if "app_data" not in st.session_state:
     st.session_state["app_data"] = load_data()
 
@@ -463,7 +586,16 @@ with st.sidebar:
     st.metric("Overall attendance", f'{all_stats["percentage"]:.1f}%')
     st.progress(min(1.0, max(0.0, float(all_stats["percentage"]) / 100)))
     st.caption(f'{len(subjects)} subject(s) · {all_stats["held"]} counted lecture(s)')
-    st.caption("Saved locally on this computer.")
+    st.caption(f'Signed in: {st.session_state.get("ae_user_email", "student")}')
+    if st.button("Log out", use_container_width=True):
+        try:
+            current_supabase().auth.sign_out()
+        except Exception:
+            pass
+        for key in ("ae_access_token", "ae_refresh_token", "ae_user_id", "ae_user_email", "app_data"):
+            st.session_state.pop(key, None)
+        st.rerun()
+    st.caption("Cloud-saved to your private student account.")
 
 
 # ---------------------------------------------------------------------------
@@ -974,7 +1106,7 @@ elif page == "Reports":
 # 11. SETTINGS
 # ---------------------------------------------------------------------------
 elif page == "Settings":
-    page_heading("Settings", "Set your attendance goal and manage your local data.")
+    page_heading("Settings", "Set your attendance goal and manage your account data.")
 
     current_target = int(app_data["settings"].get("attendance_target", 75))
     st.subheader("Attendance target")
@@ -996,10 +1128,9 @@ elif page == "Settings":
             st.rerun()
 
     st.divider()
-    st.subheader("Your local data")
-    st.write("AttendEase stores subjects and lecture records in a JSON file beside `attendease.py`.")
-    st.code(str(DATA_FILE), language="text")
-    st.caption("Back up this file periodically. Do not delete it unless you want to remove your saved records.")
+    st.subheader("Your cloud data")
+    st.write("Your subjects and lecture records are stored in Supabase and scoped to your signed-in student account.")
+    st.caption("The old attendease_data.json file is not used as the live database. Keep it as a backup until you have verified your cloud records.")
 
     all_stats = overall_stats(subjects)
     st.subheader("Data summary")
@@ -1012,9 +1143,9 @@ elif page == "Settings":
     st.subheader("About AttendEase")
     st.markdown(
         """
-        - **Local-first:** records stay in a JSON file on this computer.
+        - **Individual accounts:** email authentication is handled by Supabase.
+        - **Private records:** database Row Level Security should restrict records to their owner.
         - **Transparent calculations:** only Present and Absent count toward the percentage.
-        - **Not cloud-synced:** this prototype does not yet support accounts or sharing across devices.
         - **Not an official record:** compare important totals with your college's official attendance system.
         """
     )
@@ -1024,4 +1155,4 @@ elif page == "Settings":
 # 12. FOOTER
 # ---------------------------------------------------------------------------
 st.divider()
-st.caption("AttendEase · Built for clarity, not confusion. Your data is stored locally on this computer.")
+st.caption("AttendEase · Built for clarity, not confusion. Your records are stored in your private Supabase account.")

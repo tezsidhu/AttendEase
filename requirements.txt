@@ -1,1 +1,5 @@
-streamlit==1.66.0
+
+streamlit
+supabase
+python-dotenv
+pandas
