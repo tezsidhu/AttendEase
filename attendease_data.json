@@ -1,0 +1,14 @@
+{
+  "settings": {
+    "attendance_target": 75
+  },
+  "subjects": [
+    {
+      "id": "63fca5c1-a34a-4b0d-a71e-e2b09485ddf0",
+      "name": "Maths",
+      "teacher": "",
+      "color": "#6D5CE8",
+      "lectures": []
+    }
+  ]
+}
