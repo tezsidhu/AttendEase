@@ -753,8 +753,8 @@ def weekly_attendance_trend(
 def display_name_from_email(email: Any) -> str:
     """Use a readable first name from the signed-in email without rendering markup."""
     local_part = str(email or "").split("@", 1)[0]
-    name_parts = [part for part in re.split(r"[._+-]+", local_part) if part.isalpha()]
-    return name_parts[0].capitalize()[:24] if name_parts else "there"
+    name_parts = re.findall(r"[A-Za-z]+", local_part)
+    return name_parts[0].capitalize()[:24] if name_parts else "Student"
 
 
 def classes_needed_to_target(present: int, held: int, target: int) -> int:
