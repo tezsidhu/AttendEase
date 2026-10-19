@@ -21,6 +21,7 @@ Features
 
 from __future__ import annotations
 
+import calendar as month_calendar
 import csv
 import copy
 import html
@@ -30,10 +31,11 @@ import logging
 import os
 import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import streamlit as st
 from dotenv import load_dotenv
 from supabase import create_client
@@ -167,6 +169,147 @@ st.markdown(
     .ae-card-note { color: var(--ae-muted); font-size: 0.73rem; margin-top: 0.15rem; }
     .stAlert { border-radius: 10px; }
     .ae-section-note { color: var(--ae-muted); font-size: 0.88rem; margin-top: -0.5rem; }
+    .ae-topbar {
+        background: rgba(255,255,255,.9);
+        border: 1px solid var(--ae-border);
+        border-radius: 14px;
+        padding: .45rem .7rem;
+        margin-bottom: 1rem;
+    }
+    .ae-date-chip, .ae-profile-chip {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 2.55rem;
+        border: 1px solid var(--ae-border);
+        border-radius: 10px;
+        background: #fff;
+        color: var(--ae-ink);
+        font-size: .76rem;
+        font-weight: 700;
+        padding: .35rem .65rem;
+        white-space: nowrap;
+    }
+    .ae-profile-chip { gap: .5rem; justify-content: flex-start; }
+    .ae-avatar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.7rem;
+        height: 1.7rem;
+        border-radius: 50%;
+        background: #EEEAFE;
+        color: #5947D2;
+        font-size: .72rem;
+        font-weight: 800;
+    }
+    .ae-greeting { margin: .1rem 0 .15rem; color: var(--ae-ink); font-weight: 800; }
+    .ae-greeting-note { color: var(--ae-muted); font-size: .86rem; margin-bottom: .85rem; }
+    .ae-panel {
+        background: #fff;
+        border: 1px solid var(--ae-border);
+        border-radius: 14px;
+        padding: 1rem;
+        min-height: 100%;
+    }
+    .ae-panel-title { color: var(--ae-ink); font-size: .98rem; font-weight: 800; margin: 0 0 .75rem; }
+    .ae-overall-card {
+        min-height: 155px;
+        background: #fff;
+        border: 1px solid var(--ae-border);
+        border-radius: 14px;
+        padding: .8rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: .55rem;
+        text-align: center;
+    }
+    .ae-overall-label { align-self: flex-start; color: var(--ae-ink); font-size: .78rem; font-weight: 800; }
+    .ae-donut {
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: conic-gradient(#6D5CE8 var(--ae-pct), #ECEAF4 0);
+    }
+    .ae-donut-center {
+        width: 70px;
+        height: 70px;
+        border-radius: 50%;
+        background: #fff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: var(--ae-ink);
+        line-height: 1.05;
+    }
+    .ae-donut-value { font-family: 'Manrope', sans-serif; font-size: 1.15rem; font-weight: 800; }
+    .ae-donut-note { color: var(--ae-muted); font-size: .54rem; margin-top: .2rem; }
+    .ae-status-card {
+        min-height: 155px;
+        border: 1px solid var(--ae-border);
+        border-radius: 14px;
+        padding: .9rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+    .ae-status-label { color: var(--ae-muted); font-size: .78rem; font-weight: 700; }
+    .ae-status-value { color: var(--ae-ink); font-family: 'Manrope', sans-serif; font-size: 1.65rem; font-weight: 800; margin-top: .55rem; }
+    .ae-status-note { color: var(--ae-muted); font-size: .7rem; margin-top: .05rem; }
+    .ae-status-present { background: #F0FAF6; border-color: #E0F2E9; }
+    .ae-status-absent { background: #FFF3F2; border-color: #F6E4E2; }
+    .ae-status-cancelled { background: #FFF8EE; border-color: #F5EAD8; }
+    .ae-status-blank { background: #F3F6FF; border-color: #E2E8FA; }
+    .ae-subject-line { margin-bottom: .8rem; }
+    .ae-subject-name { color: var(--ae-ink); font-size: .8rem; font-weight: 700; }
+    .ae-subject-percentage { color: var(--ae-ink); font-size: .74rem; font-weight: 800; text-align: right; }
+    .ae-subject-track { height: 7px; margin-top: .35rem; border-radius: 99px; background: #ECEEF5; overflow: hidden; }
+    .ae-subject-fill { height: 100%; border-radius: inherit; }
+    .ae-low-alert {
+        background: #FFF8F0;
+        border: 1px solid #F5E8D8;
+        border-radius: 12px;
+        padding: .8rem 1rem;
+        color: #6B5137;
+        font-size: .82rem;
+        margin: .9rem 0;
+    }
+    .ae-history-row {
+        display: flex;
+        align-items: center;
+        gap: .8rem;
+        background: #FBFBFE;
+        border: 1px solid var(--ae-border);
+        border-radius: 10px;
+        padding: .65rem .75rem;
+        margin-bottom: .4rem;
+    }
+    .ae-history-index { color: var(--ae-muted); font-size: .72rem; font-weight: 800; min-width: 24px; }
+    .ae-history-main { flex: 1; min-width: 0; }
+    .ae-history-title { color: var(--ae-ink); font-size: .8rem; font-weight: 700; overflow-wrap: anywhere; }
+    .ae-history-subtitle { color: var(--ae-muted); font-size: .68rem; margin-top: .1rem; }
+    .ae-history-status { font-size: .7rem; font-weight: 800; white-space: nowrap; }
+    .ae-status-text-present { color: #168260; }
+    .ae-status-text-absent { color: #C65358; }
+    .ae-status-text-cancelled { color: #9B6B28; }
+    .ae-status-text-blank { color: #77758D; }
+    .ae-calendar-day {
+        min-height: 76px;
+        border: 1px solid var(--ae-border);
+        border-radius: 9px;
+        background: #fff;
+        padding: .38rem;
+        color: var(--ae-ink);
+        font-size: .76rem;
+    }
+    .ae-calendar-muted { background: #F8F8FB; color: #AAA8B7; }
+    .ae-calendar-count { color: #5947D2; font-size: .63rem; font-weight: 700; margin-top: .3rem; }
+    .ae-calendar-empty { color: #A3A1AE; font-size: .63rem; margin-top: .3rem; }
     .ae-pill {
         display: inline-block; border-radius: 999px; padding: 0.22rem 0.62rem;
         background: #F0EDFF; color: #5947D2; font-size: 0.75rem; font-weight: 700;
@@ -207,6 +350,8 @@ st.markdown(
         .ae-hero { padding: 1.15rem; border-radius: 16px; }
         .ae-card { padding: 0.85rem; }
         .ae-card-value { font-size: 1.5rem; }
+        .ae-status-card, .ae-overall-card { min-height: 125px; }
+        .ae-calendar-day { min-height: 59px; padding: .25rem; font-size: .69rem; }
     }
     </style>
     """,
@@ -573,6 +718,45 @@ def overall_stats(subjects: list[dict[str, Any]]) -> dict[str, float | int]:
     }
 
 
+def weekly_attendance_trend(
+    subjects: list[dict[str, Any]], week_count: int = 5, today: date | None = None
+) -> pd.DataFrame:
+    """Return a small, weighted attendance trend for the most recent full weeks."""
+    today = today or date.today()
+    this_week = today - timedelta(days=today.weekday())
+    first_week = this_week - timedelta(weeks=week_count - 1)
+    totals = [{"present": 0, "absent": 0} for _ in range(week_count)]
+
+    for subject in subjects:
+        for lecture in subject.get("lectures", []):
+            status = lecture.get("status", BLANK)
+            if status not in COUNTED_STATUSES:
+                continue
+            try:
+                lecture_date = date.fromisoformat(str(lecture.get("date", "")))
+            except ValueError:
+                continue
+            if lecture_date > today or lecture_date < first_week:
+                continue
+            week_index = (lecture_date - first_week).days // 7
+            if 0 <= week_index < week_count:
+                totals[week_index][status.casefold()] += 1
+
+    percentages = []
+    for bucket in totals:
+        held = bucket["present"] + bucket["absent"]
+        percentages.append((bucket["present"] / held * 100) if held else None)
+    labels = [f"Week {index + 1}" for index in range(week_count)]
+    return pd.DataFrame({"Attendance": percentages}, index=labels)
+
+
+def display_name_from_email(email: Any) -> str:
+    """Use a readable first name from the signed-in email without rendering markup."""
+    local_part = str(email or "").split("@", 1)[0]
+    name_parts = [part for part in re.split(r"[._+-]+", local_part) if part.isalpha()]
+    return name_parts[0].capitalize()[:24] if name_parts else "there"
+
+
 def classes_needed_to_target(present: int, held: int, target: int) -> int:
     """Return future consecutive attended classes needed to reach a target percentage."""
     if held == 0:
@@ -727,16 +911,25 @@ with st.sidebar:
     st.markdown('<div class="ae-brand">Attend<span>Ease</span></div>', unsafe_allow_html=True)
     st.markdown('<div class="ae-subbrand">Your attendance, made simple.</div>', unsafe_allow_html=True)
 
-    nav_options = ["Dashboard", "My Subjects", "Mark Attendance", "Reports", "Settings"]
+    nav_options = ["Dashboard", "My Subjects", "Mark Attendance", "Reports", "Calendar", "Settings"]
+    nav_labels = {
+        "Dashboard": "⌂  Dashboard",
+        "My Subjects": "▦  Subjects",
+        "Mark Attendance": "◷  Attendance History",
+        "Reports": "▤  Analytics",
+        "Calendar": "▣  Calendar",
+        "Settings": "⚙  Settings",
+    }
     if "page_jump" in st.session_state:
         requested_page = st.session_state.pop("page_jump")
         if requested_page in nav_options:
             st.session_state["navigation_page"] = requested_page
     page = st.radio(
-        "NAVIGATION",
+        "Navigation",
         nav_options,
         key="navigation_page",
-        label_visibility="visible",
+        format_func=lambda value: nav_labels[value],
+        label_visibility="collapsed",
     )
 
     st.divider()
@@ -745,7 +938,7 @@ with st.sidebar:
     st.metric("Overall attendance", f'{all_stats["percentage"]:.1f}%')
     st.progress(min(1.0, max(0.0, float(all_stats["percentage"]) / 100)))
     st.caption(f'{len(subjects)} subject(s) · {all_stats["held"]} counted lecture(s)')
-    st.caption(f'Signed in: {st.session_state.get("ae_user_email", "student")}')
+    st.caption(f'Signed in: {escape_markdown_text(st.session_state.get("ae_user_email", "student"))}')
     if st.button("Log out", use_container_width=True):
         if st.session_state.get("save_pending"):
             st.error("Retry the pending save before logging out so you do not lose this session's changes.")
@@ -769,109 +962,163 @@ with st.sidebar:
 # 7. DASHBOARD
 # ---------------------------------------------------------------------------
 if page == "Dashboard":
-    today_label = date.today().strftime("%A, %d %B %Y")
+    today = date.today()
+    email = st.session_state.get("ae_user_email", "")
+    display_name = display_name_from_email(email)
+    initials = "".join(part[0] for part in re.split(r"[._+-]+", str(email).split("@", 1)[0]) if part)[:2].upper()
+    hour = datetime.now().hour
+    greeting = "Good morning" if hour < 12 else ("Good afternoon" if hour < 18 else "Good evening")
+
+    search_col, date_col, profile_col = st.columns([5, 1.4, 1.8], vertical_alignment="center")
+    with search_col:
+        dashboard_search = st.text_input(
+            "Search subjects or lectures",
+            placeholder="Search subjects, lectures...",
+            label_visibility="collapsed",
+            key="dashboard_search",
+        ).strip().casefold()
+    with date_col:
+        st.markdown(
+            f'<div class="ae-date-chip">▣ &nbsp; {html.escape(today.strftime("%a, %d %b %Y"), quote=True)}</div>',
+            unsafe_allow_html=True,
+        )
+    with profile_col:
+        st.markdown(
+            f'<div class="ae-profile-chip"><span class="ae-avatar">{html.escape(initials or "S", quote=True)}</span>'
+            f'<span>{html.escape(display_name, quote=True)}<br><small style="color:#77758D;font-weight:500">Student</small></span></div>',
+            unsafe_allow_html=True,
+        )
     st.markdown(
-        f"""
-        <div class="ae-hero">
-            <div class="ae-eyebrow">{today_label}</div>
-            <h1>Stay on top of your attendance.</h1>
-            <p>A clear view of your classes, your progress, and what it takes to stay above your target.</p>
-        </div>
-        """,
+        f'<h1 class="ae-greeting">{greeting}, {html.escape(display_name, quote=True)}!</h1>'
+        "<div class=\"ae-greeting-note\">Here's your attendance overview.</div>",
         unsafe_allow_html=True,
     )
 
     all_stats = overall_stats(subjects)
     target = int(app_data["settings"].get("attendance_target", 75))
-    c1, c2, c3, c4 = st.columns(4, gap="small")
+    c1, c2, c3, c4, c5 = st.columns([1.2, 1, 1, 1, 1], gap="small")
+    pct = min(100.0, max(0.0, float(all_stats["percentage"])))
     with c1:
-        metric_card("Overall attendance", f'{all_stats["percentage"]:.1f}%', "Across all counted lectures")
-    with c2:
-        metric_card("Classes attended", str(all_stats["present"]), "Marked Present")
-    with c3:
-        metric_card("Classes missed", str(all_stats["absent"]), "Marked Absent")
-    with c4:
-        metric_card("Active subjects", str(len(subjects)), "Subjects you're tracking")
-
-    st.write("")
-    left, right = st.columns([1.55, 1], gap="medium")
-    with left:
-        st.subheader("Subject overview")
-        if not subjects:
-            st.info("Your dashboard is ready. Add your first subject to start tracking attendance.")
-            if st.button("＋ Add your first subject", type="primary"):
-                st.session_state["page_jump"] = "My Subjects"
-                st.rerun()
-        else:
-            for subject in subjects:
-                stats = attendance_stats(subject)
-                with st.container(border=True):
-                    top1, top2 = st.columns([3, 1])
-                    with top1:
-                        st.markdown(f"**{escape_markdown_text(subject['name'])}**")
-                        teacher = subject.get("teacher", "").strip()
-                        st.caption(escape_markdown_text(teacher) if teacher else "No teacher added")
-                    with top2:
-                        st.markdown(
-                            f'<div style="text-align:right;font-weight:800;font-size:1.15rem;color:#5141C9">{stats["percentage"]:.1f}%</div>',
-                            unsafe_allow_html=True,
-                        )
-                    st.progress(min(1.0, float(stats["percentage"]) / 100))
-                    st.caption(
-                        f'{stats["present"]} present · {stats["absent"]} absent · '
-                        f'{stats["held"]} counted lecture(s)'
-                    )
-                    if stats["held"] == 0:
-                        st.caption("Mark a lecture to start calculating attendance.")
-                    elif stats["percentage"] < target:
-                        needed = classes_needed_to_target(
-                            int(stats["present"]), int(stats["held"]), target
-                        )
-                        st.warning(
-                            f"Below your {target}% target. "
-                            + (f"Attend the next {needed} consecutive class(es) to recover." if needed >= 0 else "A perfect record is needed to reach this target.")
-                        )
-                    else:
-                        st.success(f"You're at or above your {target}% target.")
-    with right:
-        st.subheader("Your target")
         st.markdown(
-            f'<div class="ae-card"><div class="ae-card-label">Attendance goal</div>'
-            f'<div class="ae-card-value">{target}%</div>'
-            f'<div class="ae-card-note">Your personal minimum</div></div>',
+            f'<div class="ae-overall-card"><div class="ae-overall-label">Overall attendance</div>'
+            f'<div class="ae-donut" style="--ae-pct:{pct:.1f}%"><div class="ae-donut-center">'
+            f'<span class="ae-donut-value">{pct:.1f}%</span><span class="ae-donut-note">of counted lectures</span>'
+            '</div></div></div>',
             unsafe_allow_html=True,
         )
-        st.write("")
-        if all_stats["held"] == 0:
-            st.info("Record your first lecture to unlock your overall attendance insights.")
-        elif all_stats["percentage"] >= target:
-            st.success("You're meeting your overall attendance target.")
-            st.write(f'You have attended {all_stats["present"]} of {all_stats["held"]} counted lectures.')
-        else:
-            needed = classes_needed_to_target(
-                int(all_stats["present"]), int(all_stats["held"]), target
+    card_data = [
+        (c2, "present", "Present", int(all_stats["present"])),
+        (c3, "absent", "Absent", int(all_stats["absent"])),
+        (c4, "cancelled", "Cancelled", int(all_stats["cancelled"])),
+        (c5, "blank", "Unmarked", int(all_stats["blank"])),
+    ]
+    for column, style, label, value in card_data:
+        with column:
+            st.markdown(
+                f'<div class="ae-status-card ae-status-{style}"><div class="ae-status-label">{label}</div>'
+                f'<div class="ae-status-value">{value}</div><div class="ae-status-note">lectures</div></div>',
+                unsafe_allow_html=True,
             )
-            if needed >= 0:
-                st.warning(f"Attend the next **{needed} consecutive class(es)** to bring overall attendance to {target}%.")
-            else:
-                st.warning("A 100% target cannot be recovered after a missed class.")
-        st.subheader("How AttendEase counts")
-        st.caption("Present and Absent count as held lectures. Cancelled and Blank records are excluded from the attendance percentage.")
 
-    st.write("")
-    st.subheader("Quick actions")
-    qa1, qa2, qa3 = st.columns(3)
-    with qa1:
-        if st.button("＋ Add subject", use_container_width=True):
-            st.session_state["page_jump"] = "My Subjects"
-            st.rerun()
-    with qa2:
-        if st.button("✓ Mark attendance", use_container_width=True):
+    trend_col, subjects_col = st.columns([1.55, 1], gap="medium")
+    with trend_col:
+        with st.container(border=True):
+            st.markdown('<div class="ae-panel-title">Attendance trend</div>', unsafe_allow_html=True)
+            st.caption("Weekly attendance over the last five weeks")
+            trend_data = weekly_attendance_trend(subjects)
+            if all_stats["held"] and trend_data["Attendance"].notna().any():
+                st.line_chart(trend_data, color="#6D5CE8", height=225)
+            else:
+                st.info("Your recent trend will appear after you record attendance in the last five weeks.")
+    with subjects_col:
+        with st.container(border=True):
+            title_col, view_col = st.columns([2.5, 1], vertical_alignment="center")
+            with title_col:
+                st.markdown('<div class="ae-panel-title">Subject overview</div>', unsafe_allow_html=True)
+            with view_col:
+                if st.button("View all", key="dashboard_view_all_subjects"):
+                    st.session_state["page_jump"] = "My Subjects"
+                    st.rerun()
+            matching_subjects = [
+                subject for subject in subjects
+                if not dashboard_search
+                or dashboard_search in str(subject.get("name", "")).casefold()
+                or any(dashboard_search in str(lecture.get("topic", "")).casefold() for lecture in subject.get("lectures", []))
+            ]
+            if not matching_subjects:
+                st.info("No subjects or lectures match your search." if subjects else "Add a subject to start tracking.")
+            for subject in matching_subjects[:6]:
+                stats = attendance_stats(subject)
+                subject_name = html.escape(str(subject.get("name", "Untitled subject")), quote=True)
+                subject_pct = min(100.0, max(0.0, float(stats["percentage"])))
+                raw_color = str(subject.get("color", "#6D5CE8"))
+                accent = raw_color if re.fullmatch(r"#[0-9A-Fa-f]{6}", raw_color) else "#6D5CE8"
+                st.markdown(
+                    f'<div class="ae-subject-line"><div style="display:flex;justify-content:space-between;gap:.5rem">'
+                    f'<span class="ae-subject-name">{subject_name}</span><span class="ae-subject-percentage">{subject_pct:.0f}%</span></div>'
+                    f'<div class="ae-subject-track"><div class="ae-subject-fill" style="width:{subject_pct:.1f}%;background:{accent}"></div></div>'
+                    f'<div class="ae-history-subtitle">{int(stats["present"])} present · {int(stats["held"])} counted</div></div>',
+                    unsafe_allow_html=True,
+                )
+            if not subjects and st.button("＋ Add your first subject", type="primary", key="dashboard_add_first_subject"):
+                st.session_state["page_jump"] = "My Subjects"
+                st.rerun()
+
+    below_target = [
+        subject for subject in subjects
+        if attendance_stats(subject)["held"] and attendance_stats(subject)["percentage"] < target
+    ]
+    if below_target:
+        alert_col, action_col = st.columns([5, 1.25], vertical_alignment="center")
+        with alert_col:
+            st.markdown(
+                f'<div class="ae-low-alert"><strong>{len(below_target)} subject(s) below your {target}% target</strong><br>'
+                'Consider attending upcoming lectures to improve your record.</div>',
+                unsafe_allow_html=True,
+            )
+        with action_col:
+            if st.button("View subjects", key="dashboard_low_subjects"):
+                st.session_state["page_jump"] = "My Subjects"
+                st.rerun()
+
+    with st.container(border=True):
+        st.markdown('<div class="ae-panel-title">Lecture attendance</div>', unsafe_allow_html=True)
+        st.caption("Latest records. Use Attendance History to add, update, or remove lectures.")
+        lecture_rows = []
+        for subject in subjects:
+            subject_name = str(subject.get("name", "Untitled subject"))
+            for lecture in subject.get("lectures", []):
+                topic = str(lecture.get("topic", "")).strip()
+                if dashboard_search and dashboard_search not in subject_name.casefold() and dashboard_search not in topic.casefold():
+                    continue
+                lecture_rows.append((str(lecture.get("date", "")), subject, lecture))
+        lecture_rows.sort(key=lambda item: (item[0], str(item[2].get("id", ""))), reverse=True)
+        status_styles = {
+            PRESENT: ("present", "Present"),
+            ABSENT: ("absent", "Absent"),
+            CANCELLED: ("cancelled", "Cancelled"),
+            BLANK: ("blank", "Unmarked"),
+        }
+        if not lecture_rows:
+            st.info("No lecture records match your search. Add one from Attendance History.")
+        for index, (date_value, subject, lecture) in enumerate(lecture_rows[:5], start=1):
+            status_class, status_label = status_styles.get(lecture.get("status", BLANK), status_styles[BLANK])
+            try:
+                display_date = date.fromisoformat(date_value).strftime("%a, %d %b %Y")
+            except ValueError:
+                display_date = date_value or "Date not set"
+            safe_subject = html.escape(str(subject.get("name", "Untitled subject")), quote=True)
+            safe_topic = html.escape(str(lecture.get("topic", "")).strip() or f"Lecture {index:02d}", quote=True)
+            safe_date = html.escape(display_date, quote=True)
+            st.markdown(
+                f'<div class="ae-history-row"><span class="ae-history-index">{index:02d}</span>'
+                f'<div class="ae-history-main"><div class="ae-history-title">{safe_topic}</div>'
+                f'<div class="ae-history-subtitle">{safe_subject} · {safe_date}</div></div>'
+                f'<span class="ae-history-status ae-status-text-{status_class}">● &nbsp; {status_label}</span></div>',
+                unsafe_allow_html=True,
+            )
+        if lecture_rows and st.button("Open attendance history", key="dashboard_open_history"):
             st.session_state["page_jump"] = "Mark Attendance"
-            st.rerun()
-    with qa3:
-        if st.button("↗ View reports", use_container_width=True):
-            st.session_state["page_jump"] = "Reports"
             st.rerun()
 
 
@@ -1276,7 +1523,100 @@ elif page == "Reports":
 
 
 # ---------------------------------------------------------------------------
-# 11. SETTINGS
+# 11. CALENDAR
+# ---------------------------------------------------------------------------
+elif page == "Calendar":
+    page_heading("Calendar", "Browse lecture dates and attendance status by month.")
+
+    today = date.today()
+    month_options = []
+    for offset in range(-6, 7):
+        month_index = today.year * 12 + (today.month - 1) + offset
+        year, month_zero_based = divmod(month_index, 12)
+        month_options.append(date(year, month_zero_based + 1, 1))
+    selected_month = st.selectbox(
+        "Month",
+        month_options,
+        index=6,
+        format_func=lambda value: value.strftime("%B %Y"),
+        key="calendar_month",
+    )
+
+    lectures_by_date: dict[str, list[tuple[dict[str, Any], dict[str, Any]]]] = {}
+    for subject in subjects:
+        for lecture in subject.get("lectures", []):
+            try:
+                lecture_day = date.fromisoformat(str(lecture.get("date", "")))
+            except ValueError:
+                continue
+            lectures_by_date.setdefault(lecture_day.isoformat(), []).append((subject, lecture))
+
+    month_stats = {status: 0 for status in STATUSES}
+    month_records = []
+    for day_key, day_records in lectures_by_date.items():
+        if day_key.startswith(f"{selected_month.year:04d}-{selected_month.month:02d}-"):
+            month_records.extend((day_key, subject, lecture) for subject, lecture in day_records)
+            for _, lecture in day_records:
+                status = lecture.get("status", BLANK)
+                if status in month_stats:
+                    month_stats[status] += 1
+
+    month_cols = st.columns(4)
+    month_cols[0].metric("Lectures this month", len(month_records))
+    month_cols[1].metric("Present", month_stats[PRESENT])
+    month_cols[2].metric("Absent", month_stats[ABSENT])
+    month_cols[3].metric("Unmarked", month_stats[BLANK])
+
+    weekday_cols = st.columns(7, gap="small")
+    for column, weekday in zip(weekday_cols, ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")):
+        with column:
+            st.caption(weekday)
+
+    for week in month_calendar.Calendar(firstweekday=0).monthdatescalendar(selected_month.year, selected_month.month):
+        day_cols = st.columns(7, gap="small")
+        for column, calendar_day in zip(day_cols, week):
+            with column:
+                is_current_month = calendar_day.month == selected_month.month
+                day_records = lectures_by_date.get(calendar_day.isoformat(), []) if is_current_month else []
+                cell_class = "ae-calendar-day" if is_current_month else "ae-calendar-day ae-calendar-muted"
+                event_count = len(day_records)
+                event_label = f'{event_count} lecture(s)' if event_count else "No lectures"
+                event_class = "ae-calendar-count" if event_count else "ae-calendar-empty"
+                st.markdown(
+                    f'<div class="{cell_class}"><strong>{calendar_day.day}</strong>'
+                    f'<div class="{event_class}">{event_label}</div></div>',
+                    unsafe_allow_html=True,
+                )
+
+    st.subheader("Lectures this month")
+    if not month_records:
+        st.info("No lectures are recorded for this month. Add one from Attendance History.")
+    else:
+        month_records.sort(key=lambda item: (item[0], str(item[2].get("id", ""))))
+        for day_key, subject, lecture in month_records:
+            status_class, status_label = {
+                PRESENT: ("present", "Present"),
+                ABSENT: ("absent", "Absent"),
+                CANCELLED: ("cancelled", "Cancelled"),
+                BLANK: ("blank", "Unmarked"),
+            }.get(lecture.get("status", BLANK), ("blank", "Unmarked"))
+            safe_subject = html.escape(str(subject.get("name", "Untitled subject")), quote=True)
+            topic = str(lecture.get("topic", "")).strip() or "Lecture"
+            safe_topic = html.escape(topic, quote=True)
+            safe_day = html.escape(date.fromisoformat(day_key).strftime("%A, %d %B"), quote=True)
+            st.markdown(
+                f'<div class="ae-history-row"><div class="ae-history-main">'
+                f'<div class="ae-history-title">{safe_topic}</div>'
+                f'<div class="ae-history-subtitle">{safe_subject} · {safe_day}</div></div>'
+                f'<span class="ae-history-status ae-status-text-{status_class}">{status_label}</span></div>',
+                unsafe_allow_html=True,
+            )
+        if st.button("Open attendance history", key="calendar_open_history"):
+            st.session_state["page_jump"] = "Mark Attendance"
+            st.rerun()
+
+
+# 12. SETTINGS
 # ---------------------------------------------------------------------------
 elif page == "Settings":
     page_heading("Settings", "Set your attendance goal and manage your account data.")
@@ -1325,7 +1665,7 @@ elif page == "Settings":
 
 
 # ---------------------------------------------------------------------------
-# 12. FOOTER
+# 13. FOOTER
 # ---------------------------------------------------------------------------
 st.divider()
 st.caption("AttendEase · Built for clarity, not confusion. Your records are stored in Supabase.")
