@@ -114,9 +114,16 @@ st.markdown(
     h3 { font-size: 1.08rem !important; font-weight: 700 !important; }
     p, label, .stMarkdown { color: #45435B; }
     [data-testid="stAppViewContainer"] .main .block-container {
-        padding-top: 1.8rem;
+        padding-top: 1rem;
         padding-bottom: 2.25rem;
         max-width: 1500px;
+    }
+    [data-testid="stTextInput"] input {
+        min-height: 2.55rem;
+        border: 1px solid var(--ae-border);
+        border-radius: 9px;
+        background: #FFFFFF;
+        font-size: .78rem;
     }
     .ae-brand {
         font-family: 'Manrope', sans-serif;
@@ -132,6 +139,16 @@ st.markdown(
         color: var(--ae-muted);
         margin-bottom: 1.4rem;
     }
+    .ae-sidebar-motivation {
+        border: 1px solid var(--ae-border);
+        border-radius: 11px;
+        background: #FAFAFF;
+        padding: .65rem .7rem;
+        color: var(--ae-ink);
+        font-size: .76rem;
+        line-height: 1.4;
+    }
+    .ae-sidebar-motivation span { color: var(--ae-muted); font-size: .68rem; }
     .ae-eyebrow {
         text-transform: uppercase;
         font-size: 0.70rem;
@@ -191,6 +208,25 @@ st.markdown(
         white-space: nowrap;
     }
     .ae-profile-chip { gap: .5rem; justify-content: flex-start; }
+    .ae-notification-chip {
+        position: relative;
+        display: grid;
+        place-items: center;
+        min-height: 2.55rem;
+        color: var(--ae-ink);
+        font-size: 1.05rem;
+    }
+    .ae-notification-chip:after {
+        content: "";
+        position: absolute;
+        top: .42rem;
+        right: .42rem;
+        width: .42rem;
+        height: .42rem;
+        border-radius: 50%;
+        background: #EF5B64;
+        border: 2px solid #FFFFFF;
+    }
     .ae-avatar {
         display: inline-flex;
         align-items: center;
@@ -203,8 +239,8 @@ st.markdown(
         font-size: .72rem;
         font-weight: 800;
     }
-    .ae-greeting { margin: .1rem 0 .15rem; color: var(--ae-ink); font-weight: 800; }
-    .ae-greeting-note { color: var(--ae-muted); font-size: .86rem; margin-bottom: .85rem; }
+    .ae-greeting { margin: .15rem 0 .1rem; color: var(--ae-ink); font-weight: 800; font-size: 1.25rem !important; }
+    .ae-greeting-note { color: var(--ae-muted); font-size: .78rem; margin-bottom: .65rem; }
     .ae-panel {
         background: #fff;
         border: 1px solid var(--ae-border);
@@ -212,9 +248,12 @@ st.markdown(
         padding: 1rem;
         min-height: 100%;
     }
-    .ae-panel-title { color: var(--ae-ink); font-size: .98rem; font-weight: 800; margin: 0 0 .75rem; }
+    .ae-panel-title { color: var(--ae-ink); font-size: .91rem; font-weight: 800; margin: 0 0 .5rem; }
+    .ae-period-pill { display: inline-block; float: right; border: 1px solid var(--ae-border); border-radius: 7px; padding: .22rem .5rem; color: var(--ae-muted); font-size: .62rem; font-weight: 600; }
+    .ae-trend-chart { width: 100%; margin-top: .15rem; }
+    .ae-trend-chart svg { display: block; width: 100%; height: 148px; overflow: visible; }
     .ae-overall-card {
-        min-height: 155px;
+        min-height: 108px;
         background: #fff;
         border: 1px solid var(--ae-border);
         border-radius: 14px;
@@ -223,21 +262,21 @@ st.markdown(
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: .55rem;
+        gap: .32rem;
         text-align: center;
     }
     .ae-overall-label { align-self: flex-start; color: var(--ae-ink); font-size: .78rem; font-weight: 800; }
     .ae-donut {
-        width: 88px;
-        height: 88px;
+        width: 76px;
+        height: 76px;
         border-radius: 50%;
         display: grid;
         place-items: center;
         background: conic-gradient(#6D5CE8 var(--ae-pct), #ECEAF4 0);
     }
     .ae-donut-center {
-        width: 70px;
-        height: 70px;
+        width: 61px;
+        height: 61px;
         border-radius: 50%;
         background: #fff;
         display: flex;
@@ -247,28 +286,45 @@ st.markdown(
         color: var(--ae-ink);
         line-height: 1.05;
     }
-    .ae-donut-value { font-family: 'Manrope', sans-serif; font-size: 1.15rem; font-weight: 800; }
-    .ae-donut-note { color: var(--ae-muted); font-size: .54rem; margin-top: .2rem; }
+    .ae-donut-value { font-family: 'Manrope', sans-serif; font-size: 1.02rem; font-weight: 800; }
+    .ae-donut-note { color: var(--ae-muted); font-size: .48rem; margin-top: .13rem; }
     .ae-status-card {
-        min-height: 155px;
+        min-height: 108px;
         border: 1px solid var(--ae-border);
         border-radius: 14px;
-        padding: .9rem;
+        padding: .65rem .75rem;
         display: flex;
         flex-direction: column;
         justify-content: center;
     }
     .ae-status-label { color: var(--ae-muted); font-size: .78rem; font-weight: 700; }
-    .ae-status-value { color: var(--ae-ink); font-family: 'Manrope', sans-serif; font-size: 1.65rem; font-weight: 800; margin-top: .55rem; }
-    .ae-status-note { color: var(--ae-muted); font-size: .7rem; margin-top: .05rem; }
+    .ae-status-value { color: var(--ae-ink); font-family: 'Manrope', sans-serif; font-size: 1.4rem; font-weight: 800; margin-top: .35rem; }
+    .ae-status-note { color: var(--ae-muted); font-size: .65rem; margin-top: .02rem; }
+    .ae-status-label:before {
+        content: "";
+        display: inline-block;
+        width: .48rem;
+        height: .48rem;
+        margin-right: .35rem;
+        border-radius: 50%;
+        background: currentColor;
+        vertical-align: .02rem;
+    }
+    .ae-status-present .ae-status-label { color: #168260; }
+    .ae-status-absent .ae-status-label { color: #C65358; }
+    .ae-status-cancelled .ae-status-label { color: #C78632; }
+    .ae-status-blank .ae-status-label { color: #5274D8; }
     .ae-status-present { background: #F0FAF6; border-color: #E0F2E9; }
     .ae-status-absent { background: #FFF3F2; border-color: #F6E4E2; }
     .ae-status-cancelled { background: #FFF8EE; border-color: #F5EAD8; }
     .ae-status-blank { background: #F3F6FF; border-color: #E2E8FA; }
-    .ae-subject-line { margin-bottom: .8rem; }
-    .ae-subject-name { color: var(--ae-ink); font-size: .8rem; font-weight: 700; }
-    .ae-subject-percentage { color: var(--ae-ink); font-size: .74rem; font-weight: 800; text-align: right; }
-    .ae-subject-track { height: 7px; margin-top: .35rem; border-radius: 99px; background: #ECEEF5; overflow: hidden; }
+    .ae-subject-line { display: flex; align-items: center; gap: .5rem; margin-bottom: .62rem; }
+    .ae-subject-icon { display: grid; place-items: center; width: 1.55rem; height: 1.55rem; flex: 0 0 1.55rem; border-radius: 7px; font-size: .66rem; font-weight: 800; }
+    .ae-subject-meta { flex: 1; min-width: 0; }
+    .ae-subject-name { color: var(--ae-ink); font-size: .7rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+    .ae-subject-count { color: var(--ae-muted); font-size: .61rem; margin-top: .12rem; }
+    .ae-subject-percentage { color: var(--ae-ink); font-size: .66rem; font-weight: 800; text-align: right; min-width: 2rem; }
+    .ae-subject-track { height: 6px; flex: 1; min-width: 2rem; border-radius: 99px; background: #ECEEF5; overflow: hidden; }
     .ae-subject-fill { height: 100%; border-radius: inherit; }
     .ae-low-alert {
         background: #FFF8F0;
@@ -277,7 +333,7 @@ st.markdown(
         padding: .8rem 1rem;
         color: #6B5137;
         font-size: .82rem;
-        margin: .9rem 0;
+        margin: .65rem 0;
     }
     .ae-history-row {
         display: flex;
@@ -286,8 +342,8 @@ st.markdown(
         background: #FBFBFE;
         border: 1px solid var(--ae-border);
         border-radius: 10px;
-        padding: .65rem .75rem;
-        margin-bottom: .4rem;
+        padding: .48rem .62rem;
+        margin-bottom: .3rem;
     }
     .ae-history-index { color: var(--ae-muted); font-size: .72rem; font-weight: 800; min-width: 24px; }
     .ae-history-main { flex: 1; min-width: 0; }
@@ -315,10 +371,10 @@ st.markdown(
         background: #F0EDFF; color: #5947D2; font-size: 0.75rem; font-weight: 700;
     }
     div.stButton > button, div.stDownloadButton > button {
-        border-radius: 11px;
+        border-radius: 9px;
         border: 1px solid #DED9FB;
         font-weight: 700;
-        min-height: 2.65rem;
+        min-height: 2.25rem;
     }
     div.stButton > button[kind="primary"] {
         background: var(--ae-purple);
@@ -350,7 +406,7 @@ st.markdown(
         .ae-hero { padding: 1.15rem; border-radius: 16px; }
         .ae-card { padding: 0.85rem; }
         .ae-card-value { font-size: 1.5rem; }
-        .ae-status-card, .ae-overall-card { min-height: 125px; }
+        .ae-status-card, .ae-overall-card { min-height: 100px; }
         .ae-calendar-day { min-height: 59px; padding: .25rem; font-size: .69rem; }
     }
     </style>
@@ -750,6 +806,83 @@ def weekly_attendance_trend(
     return pd.DataFrame({"Attendance": percentages}, index=labels)
 
 
+def attendance_trend_svg(trend: pd.DataFrame) -> str:
+    """Render a compact, responsive attendance chart to match the dashboard design."""
+    width, height = 540, 188
+    left, right, top, bottom = 42, 526, 14, 143
+    values = [None if pd.isna(value) else max(0.0, min(100.0, float(value)))
+              for value in trend["Attendance"].tolist()]
+    labels = [html.escape(str(label), quote=True) for label in trend.index]
+    if len(values) == 1:
+        x_positions = [(left + right) / 2]
+    else:
+        x_positions = [left + index * (right - left) / (len(values) - 1)
+                       for index in range(len(values))]
+
+    y_position = lambda value: bottom - (value / 100.0) * (bottom - top)
+    grid = []
+    for tick in (100, 75, 50, 25, 0):
+        y = y_position(tick)
+        grid.append(
+            f'<line x1="{left}" y1="{y:.1f}" x2="{right}" y2="{y:.1f}" '
+            'stroke="#EEF0F6" stroke-width="1"/>'
+            f'<text x="{left - 9}" y="{y + 3:.1f}" text-anchor="end" '
+            'fill="#9291A4" font-size="9" font-family="DM Sans, sans-serif">'
+            f'{tick}%</text>'
+        )
+
+    segments: list[list[tuple[float, float]]] = []
+    current_segment: list[tuple[float, float]] = []
+    for x, value in zip(x_positions, values):
+        if value is None:
+            if current_segment:
+                segments.append(current_segment)
+                current_segment = []
+            continue
+        current_segment.append((x, y_position(value)))
+    if current_segment:
+        segments.append(current_segment)
+
+    fills = []
+    lines = []
+    points = []
+    for segment in segments:
+        path = " ".join(
+            f'{"M" if index == 0 else "L"}{x:.1f},{y:.1f}'
+            for index, (x, y) in enumerate(segment)
+        )
+        lines.append(f'<path d="{path}" fill="none" stroke="#6254F4" '
+                     'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>')
+        if len(segment) > 1:
+            area_path = (f'M{segment[0][0]:.1f},{bottom} '
+                         + " ".join(f'L{x:.1f},{y:.1f}' for x, y in segment)
+                         + f' L{segment[-1][0]:.1f},{bottom} Z')
+            fills.append(f'<path d="{area_path}" fill="url(#aeTrendFill)"/>')
+        points.extend(
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3.4" fill="#6254F4" '
+            'stroke="#FFFFFF" stroke-width="1.5"/>'
+            for x, y in segment
+        )
+
+    week_labels = []
+    for x, label in zip(x_positions, labels):
+        week_labels.append(
+            f'<text x="{x:.1f}" y="{height - 9}" text-anchor="middle" '
+            'fill="#77758D" font-size="9" font-family="DM Sans, sans-serif">'
+            f'{label}</text>'
+        )
+    return (
+        f'<div class="ae-trend-chart"><svg viewBox="0 0 {width} {height}" '
+        'preserveAspectRatio="none" role="img" aria-label="Weekly attendance trend">'
+        '<defs><linearGradient id="aeTrendFill" x1="0" x2="0" y1="0" y2="1">'
+        '<stop offset="0%" stop-color="#6D5CE8" stop-opacity=".22"/>'
+        '<stop offset="100%" stop-color="#6D5CE8" stop-opacity=".015"/>'
+        '</linearGradient></defs>'
+        + "".join(grid) + "".join(fills) + "".join(lines) + "".join(points) + "".join(week_labels)
+        + '</svg></div>'
+    )
+
+
 def display_name_from_email(email: Any) -> str:
     """Use a readable first name from the signed-in email without rendering markup."""
     local_part = str(email or "").split("@", 1)[0]
@@ -933,11 +1066,20 @@ with st.sidebar:
     )
 
     st.divider()
-    st.markdown("**Your semester at a glance**")
     all_stats = overall_stats(subjects)
-    st.metric("Overall attendance", f'{all_stats["percentage"]:.1f}%')
-    st.progress(min(1.0, max(0.0, float(all_stats["percentage"]) / 100)))
-    st.caption(f'{len(subjects)} subject(s) · {all_stats["held"]} counted lecture(s)')
+    sidebar_rate = min(100.0, max(0.0, float(all_stats["percentage"])))
+    sidebar_message = (
+        "You're maintaining a good attendance rate."
+        if sidebar_rate >= target
+        else "Keep attending upcoming lectures to build a steady record."
+    )
+    st.markdown(
+        '<div class="ae-sidebar-motivation"><strong>🚀 Keep going!</strong><br>'
+        f'<span>{sidebar_message}</span></div>',
+        unsafe_allow_html=True,
+    )
+    st.progress(sidebar_rate / 100)
+    st.caption(f'{sidebar_rate:.0f}% attendance · {len(subjects)} subject(s)')
     st.caption(f'Signed in: {escape_markdown_text(st.session_state.get("ae_user_email", "student"))}')
     if st.button("Log out", use_container_width=True):
         if st.session_state.get("save_pending"):
@@ -969,7 +1111,7 @@ if page == "Dashboard":
     hour = datetime.now().hour
     greeting = "Good morning" if hour < 12 else ("Good afternoon" if hour < 18 else "Good evening")
 
-    search_col, date_col, profile_col = st.columns([5, 1.4, 1.8], vertical_alignment="center")
+    search_col, date_col, notification_col, profile_col = st.columns([5, 1.35, .4, 1.8], vertical_alignment="center")
     with search_col:
         dashboard_search = st.text_input(
             "Search subjects or lectures",
@@ -982,6 +1124,8 @@ if page == "Dashboard":
             f'<div class="ae-date-chip">▣ &nbsp; {html.escape(today.strftime("%a, %d %b %Y"), quote=True)}</div>',
             unsafe_allow_html=True,
         )
+    with notification_col:
+        st.markdown('<div class="ae-notification-chip" aria-label="Notifications">🔔</div>', unsafe_allow_html=True)
     with profile_col:
         st.markdown(
             f'<div class="ae-profile-chip"><span class="ae-avatar">{html.escape(initials or "S", quote=True)}</span>'
@@ -1023,13 +1167,15 @@ if page == "Dashboard":
     trend_col, subjects_col = st.columns([1.55, 1], gap="medium")
     with trend_col:
         with st.container(border=True):
-            st.markdown('<div class="ae-panel-title">Attendance trend</div>', unsafe_allow_html=True)
-            st.caption("Weekly attendance over the last five weeks")
+            st.markdown(
+                '<div class="ae-panel-title">Attendance trend'
+                '<span class="ae-period-pill">Last 5 weeks &nbsp;⌄</span></div>',
+                unsafe_allow_html=True,
+            )
             trend_data = weekly_attendance_trend(subjects)
-            if all_stats["held"] and trend_data["Attendance"].notna().any():
-                st.line_chart(trend_data, color="#6D5CE8", height=225)
-            else:
-                st.info("Your recent trend will appear after you record attendance in the last five weeks.")
+            st.markdown(attendance_trend_svg(trend_data), unsafe_allow_html=True)
+            if not all_stats["held"] or not trend_data["Attendance"].notna().any():
+                st.caption("Your trend will appear after you record recent attendance.")
     with subjects_col:
         with st.container(border=True):
             title_col, view_col = st.columns([2.5, 1], vertical_alignment="center")
@@ -1047,17 +1193,21 @@ if page == "Dashboard":
             ]
             if not matching_subjects:
                 st.info("No subjects or lectures match your search." if subjects else "Add a subject to start tracking.")
-            for subject in matching_subjects[:6]:
+            for subject in matching_subjects[:5]:
                 stats = attendance_stats(subject)
                 subject_name = html.escape(str(subject.get("name", "Untitled subject")), quote=True)
                 subject_pct = min(100.0, max(0.0, float(stats["percentage"])))
                 raw_color = str(subject.get("color", "#6D5CE8"))
                 accent = raw_color if re.fullmatch(r"#[0-9A-Fa-f]{6}", raw_color) else "#6D5CE8"
+                subject_initial = html.escape(str(subject.get("name", "S")).strip()[:1].upper() or "S", quote=True)
                 st.markdown(
-                    f'<div class="ae-subject-line"><div style="display:flex;justify-content:space-between;gap:.5rem">'
-                    f'<span class="ae-subject-name">{subject_name}</span><span class="ae-subject-percentage">{subject_pct:.0f}%</span></div>'
-                    f'<div class="ae-subject-track"><div class="ae-subject-fill" style="width:{subject_pct:.1f}%;background:{accent}"></div></div>'
-                    f'<div class="ae-history-subtitle">{int(stats["present"])} present · {int(stats["held"])} counted</div></div>',
+                    f'<div class="ae-subject-line"><div class="ae-subject-icon" '
+                    f'style="background:{accent}18;color:{accent}">{subject_initial}</div>'
+                    f'<div class="ae-subject-meta"><div class="ae-subject-name">{subject_name}</div>'
+                    f'<div class="ae-subject-count">{int(stats["present"])} present · {int(stats["held"])} lectures</div></div>'
+                    f'<div class="ae-subject-track"><div class="ae-subject-fill" '
+                    f'style="width:{subject_pct:.1f}%;background:{accent}"></div></div>'
+                    f'<div class="ae-subject-percentage">{subject_pct:.0f}%</div></div>',
                     unsafe_allow_html=True,
                 )
             if not subjects and st.button("＋ Add your first subject", type="primary", key="dashboard_add_first_subject"):
@@ -1082,27 +1232,46 @@ if page == "Dashboard":
                 st.rerun()
 
     with st.container(border=True):
-        st.markdown('<div class="ae-panel-title">Lecture attendance</div>', unsafe_allow_html=True)
-        st.caption("Latest records. Use Attendance History to add, update, or remove lectures.")
+        title_col, filter_col, add_col = st.columns([2.5, 1.15, 1.1], vertical_alignment="center")
+        with title_col:
+            st.markdown('<div class="ae-panel-title">Lecture attendance</div>', unsafe_allow_html=True)
+            st.caption("Mark and track your latest lecture attendance.")
+        with filter_col:
+            subject_filter_options = ["__all__"] + [str(subject.get("id", "")) for subject in subjects]
+            dashboard_subject_filter = st.selectbox(
+                "Filter by subject",
+                subject_filter_options,
+                format_func=lambda value: "All subjects" if value == "__all__" else next(
+                    (subject.get("name", "Subject") for subject in subjects if str(subject.get("id", "")) == value),
+                    "Subject",
+                ),
+                label_visibility="collapsed",
+                key="dashboard_subject_filter",
+            )
+        with add_col:
+            if st.button("+ Add lecture", type="primary", use_container_width=True, key="dashboard_add_lecture"):
+                st.session_state["page_jump"] = "Mark Attendance" if subjects else "My Subjects"
+                st.rerun()
         lecture_rows = []
         for subject in subjects:
             subject_name = str(subject.get("name", "Untitled subject"))
             for lecture in subject.get("lectures", []):
+                if dashboard_subject_filter != "__all__" and str(subject.get("id", "")) != dashboard_subject_filter:
+                    continue
                 topic = str(lecture.get("topic", "")).strip()
                 if dashboard_search and dashboard_search not in subject_name.casefold() and dashboard_search not in topic.casefold():
                     continue
                 lecture_rows.append((str(lecture.get("date", "")), subject, lecture))
         lecture_rows.sort(key=lambda item: (item[0], str(item[2].get("id", ""))), reverse=True)
-        status_styles = {
-            PRESENT: ("present", "Present"),
-            ABSENT: ("absent", "Absent"),
-            CANCELLED: ("cancelled", "Cancelled"),
-            BLANK: ("blank", "Unmarked"),
-        }
+        status_controls = (
+            (PRESENT, "✓ Present"),
+            (ABSENT, "× Absent"),
+            (CANCELLED, "○ Cancelled"),
+            (BLANK, "○ Unmarked"),
+        )
         if not lecture_rows:
-            st.info("No lecture records match your search. Add one from Attendance History.")
+            st.info("No lecture records match these filters. Add one to get started.")
         for index, (date_value, subject, lecture) in enumerate(lecture_rows[:5], start=1):
-            status_class, status_label = status_styles.get(lecture.get("status", BLANK), status_styles[BLANK])
             try:
                 display_date = date.fromisoformat(date_value).strftime("%a, %d %b %Y")
             except ValueError:
@@ -1110,13 +1279,32 @@ if page == "Dashboard":
             safe_subject = html.escape(str(subject.get("name", "Untitled subject")), quote=True)
             safe_topic = html.escape(str(lecture.get("topic", "")).strip() or f"Lecture {index:02d}", quote=True)
             safe_date = html.escape(display_date, quote=True)
-            st.markdown(
-                f'<div class="ae-history-row"><span class="ae-history-index">{index:02d}</span>'
-                f'<div class="ae-history-main"><div class="ae-history-title">{safe_topic}</div>'
-                f'<div class="ae-history-subtitle">{safe_subject} · {safe_date}</div></div>'
-                f'<span class="ae-history-status ae-status-text-{status_class}">● &nbsp; {status_label}</span></div>',
-                unsafe_allow_html=True,
-            )
+            row_columns = st.columns([.34, 2.25, .78, .72, .9, .9, .78], vertical_alignment="center")
+            with row_columns[0]:
+                st.markdown(f'<span class="ae-history-index">{index:02d}</span>', unsafe_allow_html=True)
+            with row_columns[1]:
+                st.markdown(
+                    f'<div class="ae-history-title">{safe_topic}</div>'
+                    f'<div class="ae-history-subtitle">{safe_subject} · {safe_date}</div>',
+                    unsafe_allow_html=True,
+                )
+            for column, (new_status, label) in zip(row_columns[2:6], status_controls):
+                with column:
+                    if st.button(
+                        label,
+                        type="primary" if lecture.get("status", BLANK) == new_status else "secondary",
+                        use_container_width=True,
+                        key=f'dashboard_status_{lecture.get("id", index)}_{STATUSES.index(new_status)}',
+                    ) and lecture.get("status", BLANK) != new_status:
+                        lecture["status"] = new_status
+                        if save_data():
+                            st.rerun()
+            with row_columns[6]:
+                with st.popover("⋮", use_container_width=True):
+                    st.caption("Edit the lecture details from Attendance History.")
+                    if st.button("Open history", key=f'dashboard_edit_{lecture.get("id", index)}', use_container_width=True):
+                        st.session_state["page_jump"] = "Mark Attendance"
+                        st.rerun()
         if lecture_rows and st.button("Open attendance history", key="dashboard_open_history"):
             st.session_state["page_jump"] = "Mark Attendance"
             st.rerun()
